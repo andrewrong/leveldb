@@ -43,6 +43,13 @@ namespace {
 struct LRUHandle {
   void* value;
   void (*deleter)(const Slice&, void* value);
+  /**
+   * next_hash: 用在map中的哈希冲突使用
+   * next:用来链表的时候使用
+   * prev:
+   *
+   * 这个设计有点类似于linux内核中的侵入式数据结构
+   */
   LRUHandle* next_hash;
   LRUHandle* next;
   LRUHandle* prev;
@@ -51,6 +58,7 @@ struct LRUHandle {
   bool in_cache;     // Whether entry is in the cache.
   uint32_t refs;     // References, including cache reference, if present.
   uint32_t hash;     // Hash of key(); used for fast sharding and comparisons
+  //数组名其实是这个指针的作用
   char key_data[1];  // Beginning of key
 
   Slice key() const {
@@ -67,6 +75,7 @@ struct LRUHandle {
 // table implementations in some of the compiler/runtime combinations
 // we have tested.  E.g., readrandom speeds up by ~5% over the g++
 // 4.4.3's builtin hashtable.
+//简单版本的hashtable
 class HandleTable {
  public:
   HandleTable() : length_(0), elems_(0), list_(nullptr) { Resize(); }
@@ -79,6 +88,7 @@ class HandleTable {
   LRUHandle* Insert(LRUHandle* h) {
     LRUHandle** ptr = FindPointer(h->key(), h->hash);
     LRUHandle* old = *ptr;
+    //用链表法来解决哈希冲突的问题
     h->next_hash = (old == nullptr ? nullptr : old->next_hash);
     *ptr = h;
     if (old == nullptr) {
@@ -105,6 +115,10 @@ class HandleTable {
  private:
   // The table consists of an array of buckets where each bucket is
   // a linked list of cache entries that hash into the bucket.
+  /**
+   * length_ 容量
+   * elems: 目前已有的数据个数
+   */
   uint32_t length_;
   uint32_t elems_;
   LRUHandle** list_;
@@ -112,6 +126,12 @@ class HandleTable {
   // Return a pointer to slot that points to a cache entry that
   // matches key/hash.  If there is no such cache entry, return a
   // pointer to the trailing slot in the corresponding linked list.
+  /**
+   * slot值一样，hash 和key的值不一样一样;
+   * @param key
+   * @param hash
+   * @return
+   */
   LRUHandle** FindPointer(const Slice& key, uint32_t hash) {
     LRUHandle** ptr = &list_[hash & (length_ - 1)];
     while (*ptr != nullptr && ((*ptr)->hash != hash || key != (*ptr)->key())) {
@@ -186,15 +206,19 @@ class LRUCache {
   // Dummy head of LRU list.
   // lru.prev is newest entry, lru.next is oldest entry.
   // Entries have refs==1 and in_cache==true.
+  //维持LRU的列表
   LRUHandle lru_ GUARDED_BY(mutex_);
 
   // Dummy head of in-use list.
   // Entries are in use by clients, and have refs >= 2 and in_cache==true.
+  //位置正在使用的列表
   LRUHandle in_use_ GUARDED_BY(mutex_);
 
   HandleTable table_ GUARDED_BY(mutex_);
 };
-
+/**
+ * C++构造函数是保证线程安全的，runtime保证的
+ */
 LRUCache::LRUCache() : capacity_(0), usage_(0) {
   // Make empty circular linked lists.
   lru_.next = &lru_;
@@ -216,7 +240,9 @@ LRUCache::~LRUCache() {
 }
 
 void LRUCache::Ref(LRUHandle* e) {
+  //引用一个cacheItem
   if (e->refs == 1 && e->in_cache) {  // If on lru_ list, move to in_use_ list.
+    //表示cache本身在LRU链表中；
     LRU_Remove(e);
     LRU_Append(&in_use_, e);
   }
@@ -242,6 +268,11 @@ void LRUCache::LRU_Remove(LRUHandle* e) {
   e->prev->next = e->next;
 }
 
+/**
+ * 插在最前面
+ * @param list
+ * @param e
+ */
 void LRUCache::LRU_Append(LRUHandle* list, LRUHandle* e) {
   // Make "e" newest entry by inserting just before *list
   e->next = list;
@@ -250,6 +281,12 @@ void LRUCache::LRU_Append(LRUHandle* list, LRUHandle* e) {
   e->next->prev = e;
 }
 
+/**
+ * 返回一个什么都没有的指针，通过自己提供函数来为其解析
+ * @param key
+ * @param hash
+ * @return
+ */
 Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash) {
   MutexLock l(&mutex_);
   LRUHandle* e = table_.Lookup(key, hash);
@@ -279,18 +316,23 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
   e->hash = hash;
   e->in_cache = false;
   e->refs = 1;  // for the returned handle.
+  //这到底是为了什么呢
   std::memcpy(e->key_data, key.data(), key.size());
 
+  //如果还有空间就放在内存中(in_use队列中放着)单独的一个;
   if (capacity_ > 0) {
     e->refs++;  // for the cache's reference.
     e->in_cache = true;
     LRU_Append(&in_use_, e);
     usage_ += charge;
+    //如果有相同key就删除
     FinishErase(table_.Insert(e));
   } else {  // don't cache. (capacity_==0 is supported and turns off caching.)
     // next is read by key() in an assert, so it must be initialized
     e->next = nullptr;
   }
+
+  //LRU队列中的ref都必须为1
   while (usage_ > capacity_ && lru_.next != &lru_) {
     LRUHandle* old = lru_.next;
     assert(old->refs == 1);
@@ -336,9 +378,13 @@ void LRUCache::Prune() {
 static const int kNumShardBits = 4;
 static const int kNumShards = 1 << kNumShardBits;
 
+/**
+ * 所谓shared就是将带锁的LRUCache分配，减少锁的粒度
+ */
 class ShardedLRUCache : public Cache {
  private:
   LRUCache shard_[kNumShards];
+  //貌似是为了给这个lRUcache作为标示;
   port::Mutex id_mutex_;
   uint64_t last_id_;
 

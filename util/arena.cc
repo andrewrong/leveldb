@@ -18,6 +18,10 @@ Arena::~Arena() {
 }
 
 char* Arena::AllocateFallback(size_t bytes) {
+  /**
+   * 1. 大于1kb,直接分配一个
+   * 2. 小于1kb,直接分配4KB大小的一块
+   */
   if (bytes > kBlockSize / 4) {
     // Object is more than a quarter of our block size.  Allocate it separately
     // to avoid wasting too much space in leftover bytes.
@@ -36,7 +40,11 @@ char* Arena::AllocateFallback(size_t bytes) {
 }
 
 char* Arena::AllocateAligned(size_t bytes) {
+  /**
+   * 按照指针的大小进行对齐.通常指针的大小就是地址bit的长度; 如果指针小于8就按照8对齐
+   */
   const int align = (sizeof(void*) > 8) ? sizeof(void*) : 8;
+  //静态assert
   static_assert((align & (align - 1)) == 0,
                 "Pointer size should be a power of 2");
   size_t current_mod = reinterpret_cast<uintptr_t>(alloc_ptr_) & (align - 1);

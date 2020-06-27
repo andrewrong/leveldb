@@ -18,6 +18,12 @@ void PutFixed64(std::string* dst, uint64_t value) {
   dst->append(buf, sizeof(buf));
 }
 
+/**
+ * 可变的范围是1～5个字节，因为大部分整型都不会非常大，所以就有比较好的压缩效果
+ * @param dst
+ * @param v
+ * @return
+ */
 char* EncodeVarint32(char* dst, uint32_t v) {
   // Operate on characters as unsigneds
   uint8_t* ptr = reinterpret_cast<uint8_t*>(dst);
@@ -25,6 +31,9 @@ char* EncodeVarint32(char* dst, uint32_t v) {
   if (v < (1 << 7)) {
     *(ptr++) = v;
   } else if (v < (1 << 14)) {
+    /**
+     * 字节最高位1是保存下来的
+     */
     *(ptr++) = v | B;
     *(ptr++) = v >> 7;
   } else if (v < (1 << 21)) {
@@ -49,6 +58,7 @@ char* EncodeVarint32(char* dst, uint32_t v) {
 void PutVarint32(std::string* dst, uint32_t v) {
   char buf[5];
   char* ptr = EncodeVarint32(buf, v);
+  //ptr-buf: 表示存储的size
   dst->append(buf, ptr - buf);
 }
 
@@ -69,11 +79,17 @@ void PutVarint64(std::string* dst, uint64_t v) {
   dst->append(buf, ptr - buf);
 }
 
+/**
+ * 存储一个字符串，存储个格式基本上<length><content>
+ * @param dst
+ * @param value
+ */
 void PutLengthPrefixedSlice(std::string* dst, const Slice& value) {
   PutVarint32(dst, value.size());
   dst->append(value.data(), value.size());
 }
 
+//获得可变整型之后的长度
 int VarintLength(uint64_t v) {
   int len = 1;
   while (v >= 128) {
@@ -101,6 +117,13 @@ const char* GetVarint32PtrFallback(const char* p, const char* limit,
   return nullptr;
 }
 
+/**
+ * value返回的是真是的获得值
+ * input是会变化，它在获得完value之后，整体的指针都已经移动到int之后，所以不能重新获得int
+ * @param input
+ * @param value
+ * @return
+ */
 bool GetVarint32(Slice* input, uint32_t* value) {
   const char* p = input->data();
   const char* limit = p + input->size();

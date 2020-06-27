@@ -13,10 +13,16 @@
 
 namespace leveldb {
 
+/**
+ * 跳表的内存分配器,估计是为了加快速度使用的
+ */
 class Arena {
  public:
   Arena();
 
+  /**
+   * 不能copy和不能复制; 这个对象只能移动
+   */
   Arena(const Arena&) = delete;
   Arena& operator=(const Arena&) = delete;
 
@@ -31,6 +37,7 @@ class Arena {
   // Returns an estimate of the total memory usage of data allocated
   // by the arena.
   size_t MemoryUsage() const {
+    //使用松散模式,为了性能考虑
     return memory_usage_.load(std::memory_order_relaxed);
   }
 
@@ -39,10 +46,13 @@ class Arena {
   char* AllocateNewBlock(size_t block_bytes);
 
   // Allocation state
+  /**
+   * 当前
+   */
   char* alloc_ptr_;
   size_t alloc_bytes_remaining_;
 
-  // Array of new[] allocated memory blocks
+  // Array of new[] allocated memory blocks(所有以分配的内存)
   std::vector<char*> blocks_;
 
   // Total memory usage of the arena.

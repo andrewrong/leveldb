@@ -86,6 +86,9 @@ class LEVELDB_EXPORT Slice {
   }
 
  private:
+  /**
+   * data_: 常量指针; 表示不能通过指针去修改对应的内容;
+   */
   const char* data_;
   size_t size_;
 };

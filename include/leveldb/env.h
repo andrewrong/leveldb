@@ -71,6 +71,13 @@ class LEVELDB_EXPORT Env {
   // NotFound status when the file does not exist.
   //
   // The returned file will only be accessed by one thread at a time.
+
+  /**
+   * 获得一个顺序读的文件句柄; 线程不安全
+   * @param fname
+   * @param result
+   * @return
+   */
   virtual Status NewSequentialFile(const std::string& fname,
                                    SequentialFile** result) = 0;
 
@@ -82,6 +89,13 @@ class LEVELDB_EXPORT Env {
   // not exist.
   //
   // The returned file may be concurrently accessed by multiple threads.
+
+  /**
+   * 创建一个随机读的文件句柄，线程不安全
+   * @param fname
+   * @param result
+   * @return
+   */
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      RandomAccessFile** result) = 0;
 
@@ -92,6 +106,14 @@ class LEVELDB_EXPORT Env {
   // returns non-OK.
   //
   // The returned file will only be accessed by one thread at a time.
+
+  /**
+   * 创建一个对应name的可写的文件句柄，non-thread-safe
+   * 如果已经存在会被删除l
+   * @param fname
+   * @param result
+   * @return
+   */
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) = 0;
 
@@ -107,6 +129,14 @@ class LEVELDB_EXPORT Env {
   // not allow appending to an existing file.  Users of Env (including
   // the leveldb implementation) must be prepared to deal with
   // an Env that does not support appending.
+
+  /**
+   * 以append的方式创建一个文件，如果文件不存在就新增一个; 线程不安全;
+   * 有可能会出现本身文件不支持append方式，需用户自己处理
+   * @param fname
+   * @param result
+   * @return
+   */
   virtual Status NewAppendableFile(const std::string& fname,
                                    WritableFile** result);
 
@@ -116,6 +146,13 @@ class LEVELDB_EXPORT Env {
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
   // Original contents of *results are dropped.
+
+  /**
+   * 获得某一个目录下面的所有的文件名 + 目录名
+   * @param dir
+   * @param result
+   * @return
+   */
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) = 0;
   // Delete the named file.
@@ -182,6 +219,12 @@ class LEVELDB_EXPORT Env {
   // to go away.
   //
   // May create the named file if it does not already exist.
+  /**
+   * 创建一个文件锁，用来防止同一个文件被多个进程访问;
+   * @param fname
+   * @param lock
+   * @return
+   */
   virtual Status LockFile(const std::string& fname, FileLock** lock) = 0;
 
   // Release the lock acquired by a previous successful call to LockFile.
@@ -195,16 +238,20 @@ class LEVELDB_EXPORT Env {
   // added to the same Env may run concurrently in different threads.
   // I.e., the caller may not assume that background work items are
   // serialized.
+
+  //运行一些后台任务使用;
   virtual void Schedule(void (*function)(void* arg), void* arg) = 0;
 
   // Start a new thread, invoking "function(arg)" within the new thread.
   // When "function(arg)" returns, the thread will be destroyed.
+  //用一个新的线程来执行这个任务，运行完就关闭
   virtual void StartThread(void (*function)(void* arg), void* arg) = 0;
 
   // *path is set to a temporary directory that can be used for testing. It may
   // or may not have just been created. The directory may or may not differ
   // between runs of the same process, but subsequent calls will return the
   // same directory.
+  //将path设置为临时路径，用来做测试使用，
   virtual Status GetTestDirectory(std::string* path) = 0;
 
   // Create and return a log file for storing informational messages.

@@ -370,6 +370,8 @@ if(LEVELDB_BUILD_TESTS)
     leveldb_test("util/hash_test.cc")
     leveldb_test("util/logging_test.cc")
 
+    leveldb_test("port/threadSafe_test.cpp")
+
     # TODO(costan): This test also uses
     #               "util/env_{posix|windows}_test_helper.h"
     if (WIN32)

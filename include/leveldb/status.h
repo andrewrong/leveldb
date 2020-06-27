@@ -25,11 +25,18 @@ class LEVELDB_EXPORT Status {
  public:
   // Create a success status.
   Status() noexcept : state_(nullptr) {}
+  //RAII: 自己负责管理内存j
   ~Status() { delete[] state_; }
 
+  /**
+   * copy构造函数
+   * 赋值构造函数
+   * @param rhs
+   */
   Status(const Status& rhs);
   Status& operator=(const Status& rhs);
 
+  //移动构造函数
   Status(Status&& rhs) noexcept : state_(rhs.state_) { rhs.state_ = nullptr; }
   Status& operator=(Status&& rhs) noexcept;
 

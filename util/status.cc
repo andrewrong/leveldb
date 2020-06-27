@@ -18,6 +18,16 @@ const char* Status::CopyState(const char* state) {
   return result;
 }
 
+/**
+ * status_的存储结构
+ *
+ * |4字节|1字节|字符串1|2字节(:+空格)|字符串2|
+ * |整个字符串长度|错误类型|同上|
+ * @param code
+ * @param msg
+ * @param msg2
+ */
+
 Status::Status(Code code, const Slice& msg, const Slice& msg2) {
   assert(code != kOk);
   const uint32_t len1 = static_cast<uint32_t>(msg.size());

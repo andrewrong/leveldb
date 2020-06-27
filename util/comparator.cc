@@ -18,6 +18,9 @@ namespace leveldb {
 Comparator::~Comparator() = default;
 
 namespace {
+/**
+ * 按照字节序列来进行排序; 通过memcmp来进行操作
+ */
 class BytewiseComparatorImpl : public Comparator {
  public:
   BytewiseComparatorImpl() = default;

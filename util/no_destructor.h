@@ -13,6 +13,7 @@ namespace leveldb {
 // Wraps an instance whose destructor is never called.
 //
 // This is intended for use with function-level static variables.
+// 感觉仅仅只是为了表示这是一个单例;
 template <typename InstanceType>
 class NoDestructor {
  public:

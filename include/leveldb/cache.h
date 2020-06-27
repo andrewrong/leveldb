@@ -31,6 +31,15 @@ class LEVELDB_EXPORT Cache;
 // of Cache uses a least-recently-used eviction policy.
 LEVELDB_EXPORT Cache* NewLRUCache(size_t capacity);
 
+/**
+ * 对于LRU的缓存，最为重要的点
+ *
+ * 1. 如何能保持你的时间的顺序性；就是保证cache是按照时间有序排序的，每次的访问都会进行保证这个顺序不变
+ * 2. 如何快速的调整这个过程;
+ *
+ * 按照我之前的设计: List + HashMap; List的item中有key关联着HashMap，hashMap也提供了link能快速的找到对应的list中的节点然后进行调整
+ */
+
 class LEVELDB_EXPORT Cache {
  public:
   Cache() = default;

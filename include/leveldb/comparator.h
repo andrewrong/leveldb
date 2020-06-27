@@ -45,9 +45,23 @@ class LEVELDB_EXPORT Comparator {
   // If *start < limit, changes *start to a short string in [start,limit).
   // Simple comparator implementations may return with *start unchanged,
   // i.e., an implementation of this method that does nothing is correct.
+
+  /**
+   * 主要是为了减少索引所在的占用的空间；
+   * start在经过函数调用之后会有变化;
+   *
+   * 找出start与limit的最短的分隔符，start在处理之后会比limit小，但是很短
+   * 找到limit和start之间
+   * @param start
+   * @param limit
+   */
   virtual void FindShortestSeparator(std::string* start,
                                      const Slice& limit) const = 0;
 
+  /**
+   * 找到比key大一点的短的key,估计是用来做range使用
+   * @param key
+   */
   // Changes *key to a short string >= *key.
   // Simple comparator implementations may return with *key unchanged,
   // i.e., an implementation of this method that does nothing is correct.
