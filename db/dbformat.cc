@@ -12,6 +12,12 @@
 
 namespace leveldb {
 
+/**
+ * seqId最大是56bit; seqId向左移动8为并且或一个type
+ * @param seq
+ * @param t
+ * @return
+ */
 static uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
   assert(seq <= kMaxSequenceNumber);
   assert(t <= kValueTypeForSeek);
@@ -114,15 +120,24 @@ bool InternalFilterPolicy::KeyMayMatch(const Slice& key, const Slice& f) const {
   return user_policy_->KeyMayMatch(ExtractUserKey(key), f);
 }
 
+/**
+ * 查询key
+ * 前面几个字节为长度(长度应该是key长度+8), key的data，seqId的8个字节;
+ * @param user_key
+ * @param s
+ */
 LookupKey::LookupKey(const Slice& user_key, SequenceNumber s) {
   size_t usize = user_key.size();
+  //13 = 8 + 5, 可变int最大是5个字节
   size_t needed = usize + 13;  // A conservative estimate
   char* dst;
+  //key的长度如果大于200就用动态内存，小于200就用栈空间
   if (needed <= sizeof(space_)) {
     dst = space_;
   } else {
     dst = new char[needed];
   }
+
   start_ = dst;
   dst = EncodeVarint32(dst, usize + 8);
   kstart_ = dst;

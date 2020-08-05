@@ -28,11 +28,11 @@ struct Table::Rep {
   Status status;
   RandomAccessFile* file;
   uint64_t cache_id;
-  FilterBlockReader* filter;
-  const char* filter_data;
+  FilterBlockReader* filter; //过滤器的数据
+  const char* filter_data; //用来保存指针，用来方便释放空间
 
-  BlockHandle metaindex_handle;  // Handle to metaindex_block: saved from footer
-  Block* index_block;
+  BlockHandle metaindex_handle;  // filter相关的数据就在这里Handle to metaindex_block: saved from footer
+  Block* index_block; // 索引所在的数据块
 };
 
 Status Table::Open(const Options& options, RandomAccessFile* file,
@@ -44,6 +44,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
 
   char footer_space[Footer::kEncodedLength];
   Slice footer_input;
+  //获得footer,包含了一些索引
   Status s = file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
                         &footer_input, footer_space);
   if (!s.ok()) return s;
@@ -95,6 +96,7 @@ void Table::ReadMeta(const Footer& footer) {
     // Do not propagate errors since meta info is not needed for operation
     return;
   }
+  //获得meta的数据
   Block* meta = new Block(contents);
 
   Iterator* iter = meta->NewIterator(BytewiseComparator());

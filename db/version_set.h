@@ -256,6 +256,10 @@ class VersionSet {
 
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.
+  /**
+   * 将目前有效的sstable的编号返回; 因为不同版本可能在运行过程中会被继续使用，所以可能有一些文件即使在compact之后依然有效
+   * @param live
+   */
   void AddLiveFiles(std::set<uint64_t>* live);
 
   // Return the approximate offset in the database of the data for

@@ -39,6 +39,10 @@ class BlockHandle {
   Status DecodeFrom(Slice* input);
 
  private:
+  /**
+   * 文件偏移量
+   * 大小
+   */
   uint64_t offset_;
   uint64_t size_;
 };
@@ -66,6 +70,10 @@ class Footer {
   Status DecodeFrom(Slice* input);
 
  private:
+  /**
+   * meta：filter的数据
+   * index：key索引的数据
+   */
   BlockHandle metaindex_handle_;
   BlockHandle index_handle_;
 };

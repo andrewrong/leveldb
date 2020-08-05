@@ -56,7 +56,7 @@ class FilterBlockReader {
   bool KeyMayMatch(uint64_t block_offset, const Slice& key);
 
  private:
-  const FilterPolicy* policy_;
+  const FilterPolicy* policy_ ; //过滤策略，默认是bloom过滤器
   const char* data_;    // Pointer to filter data (at block-start)
   const char* offset_;  // Pointer to beginning of offset array (at block-end)
   size_t num_;          // Number of entries in offset array

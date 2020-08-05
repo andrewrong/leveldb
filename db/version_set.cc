@@ -258,7 +258,14 @@ struct Saver {
   Slice user_key;
   std::string* value;
 };
-}  // namespace
+}
+// namespace
+/**
+ * 将指定key的value进行保存
+ * @param arg
+ * @param ikey
+ * @param v
+ */
 static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
   Saver* s = reinterpret_cast<Saver*>(arg);
   ParsedInternalKey parsed_key;
@@ -287,12 +294,14 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key, void* arg,
   tmp.reserve(files_[0].size());
   for (uint32_t i = 0; i < files_[0].size(); i++) {
     FileMetaData* f = files_[0][i];
+    //第一层的不同文件之间的key是重叠的，所以每一个都需要查一下;
     if (ucmp->Compare(user_key, f->smallest.user_key()) >= 0 &&
         ucmp->Compare(user_key, f->largest.user_key()) <= 0) {
       tmp.push_back(f);
     }
   }
   if (!tmp.empty()) {
+    //排序，让文件id最新的在最前面
     std::sort(tmp.begin(), tmp.end(), NewestFirst);
     for (uint32_t i = 0; i < tmp.size(); i++) {
       if (!(*func)(arg, 0, tmp[i])) {
@@ -320,7 +329,14 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key, void* arg,
     }
   }
 }
-
+/**
+ * 需要在sstable中寻找
+ * @param options
+ * @param k
+ * @param value
+ * @param stats
+ * @return
+ */
 Status Version::Get(const ReadOptions& options, const LookupKey& k,
                     std::string* value, GetStats* stats) {
   stats->seek_file = nullptr;
@@ -583,6 +599,10 @@ class VersionSet::Builder {
     }
   };
 
+  /**
+   * 按照一定规则比较FileMetaData之间的顺序
+   * 目测比较每一个sstable的最小那个key
+   */
   typedef std::set<FileMetaData*, BySmallestKey> FileSet;
   struct LevelState {
     std::set<uint64_t> deleted_files;
@@ -747,6 +767,7 @@ VersionSet::VersionSet(const std::string& dbname, const Options* options,
       descriptor_log_(nullptr),
       dummy_versions_(this),
       current_(nullptr) {
+  //提供的时候VersionSet就只有一个;
   AppendVersion(new Version(this));
 }
 
@@ -767,7 +788,7 @@ void VersionSet::AppendVersion(Version* v) {
   current_ = v;
   v->Ref();
 
-  // Append to linked list
+  // Append to linked list(竟然是插在dummy_versions前面,)
   v->prev_ = dummy_versions_.prev_;
   v->next_ = &dummy_versions_;
   v->prev_->next_ = v;
@@ -906,6 +927,9 @@ Status VersionSet::Recover(bool* save_manifest) {
                        0 /*initial_offset*/);
     Slice record;
     std::string scratch;
+    /**
+     * 读取manifest中的内容
+     */
     while (reader.ReadRecord(&record, &scratch) && s.ok()) {
       VersionEdit edit;
       s = edit.DecodeFrom(record);

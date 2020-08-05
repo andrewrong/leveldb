@@ -98,10 +98,18 @@ Options SanitizeOptions(const std::string& dbname,
   Options result = src;
   result.comparator = icmp;
   result.filter_policy = (src.filter_policy != nullptr) ? ipolicy : nullptr;
+  /**
+   * max_open_files: [74, 50000]
+   * write_buffer_size: [2^16, 2^30]
+   * max_file_size:[1M, 1G]
+   * block_size: [1KB, 4MB]
+   */
   ClipToRange(&result.max_open_files, 64 + kNumNonTableCacheFiles, 50000);
   ClipToRange(&result.write_buffer_size, 64 << 10, 1 << 30);
   ClipToRange(&result.max_file_size, 1 << 20, 1 << 30);
   ClipToRange(&result.block_size, 1 << 10, 4 << 20);
+
+  //初始化日志
   if (result.info_log == nullptr) {
     // Open a log file in the same directory as the db
     src.env->CreateDir(dbname);  // In case it does not exist
@@ -113,6 +121,7 @@ Options SanitizeOptions(const std::string& dbname,
     }
   }
   if (result.block_cache == nullptr) {
+    //初始化8M的blockcache
     result.block_cache = NewLRUCache(8 << 20);
   }
   return result;
@@ -123,6 +132,17 @@ static int TableCacheSize(const Options& sanitized_options) {
   return sanitized_options.max_open_files - kNumNonTableCacheFiles;
 }
 
+/**
+ * 初始化db需要做的事情
+ *
+ * 1. 对应操作系统的env进行设置
+ * 2. 设置比较器 + 过滤器，默认是字节序 + bloom过滤器
+ * 3. 对一些db的一些size进行设定
+ * 4. db路径的设定
+ * 5. 版本管理的设置; versionSet，目前只是一个空链表;
+ * @param raw_options
+ * @param dbname
+ */
 DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
     : env_(raw_options.env),
       internal_comparator_(raw_options.comparator),
@@ -162,6 +182,7 @@ DBImpl::~DBImpl() {
     env_->UnlockFile(db_lock_);
   }
 
+  // why 这里不需要加锁;
   delete versions_;
   if (mem_ != nullptr) mem_->Unref();
   if (imm_ != nullptr) imm_->Unref();
@@ -315,7 +336,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
                                      "exists (error_if_exists is true)");
     }
   }
-
+  //恢复的过程, 主要是读取manifest中的versionEdit,对版本管理进行重构,
   s = versions_->Recover(save_manifest);
   if (!s.ok()) {
     return s;
@@ -341,6 +362,11 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   uint64_t number;
   FileType type;
   std::vector<uint64_t> logs;
+
+  /**
+   * 版本中包含的log是已经被写入到sstable中的，但是wal中的log可能还没有写入到sstable中，
+   * 所以必须需要将这些没有正常写入的wal恢复回来
+   */
   for (size_t i = 0; i < filenames.size(); i++) {
     if (ParseFileName(filenames[i], &number, &type)) {
       expected.erase(number);
@@ -377,6 +403,15 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   return Status::OK();
 }
 
+/**
+ * 回放wal的日志
+ * @param log_number : wal日志名字
+ * @param last_log : 是否是最后一个日志
+ * @param save_manifest :
+ * @param edit
+ * @param max_sequence
+ * @return
+ */
 Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
                               bool* save_manifest, VersionEdit* edit,
                               SequenceNumber* max_sequence) {
@@ -1112,6 +1147,9 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
   Status s;
   MutexLock l(&mutex_);
   SequenceNumber snapshot;
+  /**
+   * 如果有snapshot，那就用snapshot的id，如果不是就用最新的id
+   */
   if (options.snapshot != nullptr) {
     snapshot =
         static_cast<const SnapshotImpl*>(options.snapshot)->sequence_number();
@@ -1121,6 +1159,11 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
 
   MemTable* mem = mem_;
   MemTable* imm = imm_;
+
+  /**
+   * 目前当前维护的version版本
+   * 目前要使用mem immem current，所以添加一下引用
+   */
   Version* current = versions_->current();
   mem->Ref();
   if (imm != nullptr) imm->Ref();
@@ -1200,6 +1243,12 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
   MutexLock l(&mutex_);
   writers_.push_back(&w);
+  /**
+   * w.done: 表示是否完成
+   * writers_.front: 表示当前write是否是最前面的writer
+   *
+   * 如果未完成并且当前写入不是最久未完成的write，就进行等待;
+   */
   while (!w.done && &w != writers_.front()) {
     w.cv.Wait();
   }
@@ -1207,21 +1256,30 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     return w.status;
   }
 
+  //当前的writer是最前面的writer，有他来完成整体写入
   // May temporarily unlock and wait.
   Status status = MakeRoomForWrite(updates == nullptr);
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;
   if (status.ok() && updates != nullptr) {  // nullptr batch is for compactions
     WriteBatch* write_batch = BuildBatchGroup(&last_writer);
+    //设置了一个新的seqId
     WriteBatchInternal::SetSequence(write_batch, last_sequence + 1);
+    //seq跳变到很大, 这是因为这里面包含了多个写操作，每一个put操作都会对应一个seqId
     last_sequence += WriteBatchInternal::Count(write_batch);
 
     // Add to log and apply to memtable.  We can release the lock
     // during this phase since &w is currently responsible for logging
     // and protects against concurrent loggers and concurrent writes
     // into mem_.
+
+    /**
+     * 为什么可以释放的原因在于：即使释放了，只是让更多的数据进入队列，但是put线程都会堵在获得mutex_上面
+     * 所以这里不会有并发问题，释放了可以让更多的数据进来;
+     */
     {
       mutex_.Unlock();
+      //1. 写wal，写成功了才返回
       status = log_->AddRecord(WriteBatchInternal::Contents(write_batch));
       bool sync_error = false;
       if (status.ok() && options.sync) {
@@ -1231,6 +1289,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
         }
       }
       if (status.ok()) {
+        //2. 写memtable
         status = WriteBatchInternal::InsertInto(write_batch, mem_);
       }
       mutex_.Lock();
@@ -1241,15 +1300,22 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
         RecordBackgroundError(status);
       }
     }
+    /**
+     * 因为返回的write_batch可能本身就有可能不是与tmp_batch_一样的，所以就需要
+     */
     if (write_batch == tmp_batch_) tmp_batch_->Clear();
-
+    //跳变的序列号
     versions_->SetLastSequence(last_sequence);
   }
 
+  /**
+   * 自己不需要唤醒自己
+   */
   while (true) {
     Writer* ready = writers_.front();
     writers_.pop_front();
     if (ready != &w) {
+      //唤醒其他的等待写入的线程
       ready->status = status;
       ready->done = true;
       ready->cv.Signal();
@@ -1259,6 +1325,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
   // Notify new head of write queue
   if (!writers_.empty()) {
+    //如果队列非空就发消息给头部，让他来做写入操作
     writers_.front()->cv.Signal();
   }
 
@@ -1279,7 +1346,9 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
   // Allow the group to grow up to a maximum size, but if the
   // original write is small, limit the growth so we do not slow
   // down the small write too much.
+  //最大合并为1M
   size_t max_size = 1 << 20;
+  //小于12bKB
   if (size <= (128 << 10)) {
     max_size = size + (128 << 10);
   }
@@ -1289,6 +1358,7 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
   ++iter;  // Advance past "first"
   for (; iter != writers_.end(); ++iter) {
     Writer* w = *iter;
+    //与第一个带头大哥不一样，那就只能分开
     if (w->sync && !first->sync) {
       // Do not include a sync write into a batch handled by a non-sync write.
       break;
@@ -1317,6 +1387,18 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
 
 // REQUIRES: mutex_ is held
 // REQUIRES: this thread is currently at the front of the writer queue
+// force大概率false
+
+/**
+ * 看名字就是说为写入过程预留空间，可能会检查
+ *
+ * 1. level0的文件个数是否已经操作一个阈值
+ * 2. memtable是否已经满
+ * 3. 如果memtable是full。并且immtable 为空，所以内存中已经满了，需要进行compaction，这个时候就唤醒背后线程
+ * 4. l0文件依然还是很多，需要唤醒compaction
+ * * @param force
+ * @return
+ */
 Status DBImpl::MakeRoomForWrite(bool force) {
   mutex_.AssertHeld();
   assert(!writers_.empty());
@@ -1329,6 +1411,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       break;
     } else if (allow_delay && versions_->NumLevelFiles(0) >=
                                   config::kL0_SlowdownWritesTrigger) {
+      // 判断当前的level0层次的文件是否已经达到需要慢慢写入的过程，可能写的太快，compaction来不及
       // We are getting close to hitting a hard limit on the number of
       // L0 files.  Rather than delaying a single write by several
       // seconds when we hit the hard limit, start delaying each
@@ -1353,6 +1436,10 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       Log(options_.info_log, "Too many L0 files; waiting...\n");
       background_work_finished_signal_.Wait();
     } else {
+      /**
+       * 判断到最后的情况就是：mem已经满，但是imm还没有，这个时候就切换memtable，生成一个新memtable，顺便切换了wal
+       * wal的大小和memtable大小数据差不多吧，每次都切换memtable都会切换wal
+       */
       // Attempt to switch to a new memtable and trigger compaction of old
       assert(versions_->PrevLogNumber() == 0);
       uint64_t new_log_number = versions_->NewFileNumber();
@@ -1483,6 +1570,9 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   VersionEdit edit;
   // Recover handles create_if_missing, error_if_exists
   bool save_manifest = false;
+  /**
+   * 恢复versionSet + WAL到memtable + sstable
+   */
   Status s = impl->Recover(&edit, &save_manifest);
   if (s.ok() && impl->mem_ == nullptr) {
     // Create new log and a corresponding memtable.

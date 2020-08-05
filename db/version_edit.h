@@ -15,9 +15,20 @@ namespace leveldb {
 
 class VersionSet;
 
+/**
+ * 对应到某一个sstatble文件
+ */
 struct FileMetaData {
   FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) {}
 
+  /**
+   * refs: 当前sstable被引用的次数，如果次数=0的时候，就表示可以删除
+   * allowed_seek:
+   * number: 文件编号，通过编号找到文件
+   * filesize: 文件size
+   * smallest: 最小key的
+   * largest: 最大key
+   */
   int refs;
   int allowed_seeks;  // Seeks allowed until compaction
   uint64_t number;
@@ -26,6 +37,9 @@ struct FileMetaData {
   InternalKey largest;   // Largest internal key served by table
 };
 
+/**
+ * 类似与git中的一次commit
+ */
 class VersionEdit {
  public:
   VersionEdit() { Clear(); }
@@ -85,6 +99,13 @@ class VersionEdit {
 
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 
+  /**
+   * 压缩算法的名字
+   * 对应的wal日志编号
+   * 上一个wal日志编号
+   * 下一个文件编号
+   * 最新的序列号
+   */
   std::string comparator_;
   uint64_t log_number_;
   uint64_t prev_log_number_;
@@ -96,8 +117,14 @@ class VersionEdit {
   bool has_next_file_number_;
   bool has_last_sequence_;
 
+  /**
+   * key: level
+   * value: 内部key
+   */
   std::vector<std::pair<int, InternalKey>> compact_pointers_;
+  //需要被删除的文件
   DeletedFileSet deleted_files_;
+  // 新增的文件
   std::vector<std::pair<int, FileMetaData>> new_files_;
 };
 

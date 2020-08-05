@@ -49,12 +49,21 @@ class LEVELDB_EXPORT DB {
   // Stores a pointer to a heap-allocated database in *dbptr and returns
   // OK on success.
   // Stores nullptr in *dbptr and returns a non-OK status on error.
-  // Caller should delete *dbptr when it is no longer needed.
+  // Caller should dejete *dbptr when it is no longer needed.
+
+  /**
+   * 打开leveldb,
+   * @param options: 打开leveldb的一些参数
+   * @param name: 路径
+   * @param dbptr: 返回值,如果成功打开就会在这个参数中返回;
+   * @return
+   */
   static Status Open(const Options& options, const std::string& name,
                      DB** dbptr);
 
   DB() = default;
 
+  //db不能被copy或者赋值
   DB(const DB&) = delete;
   DB& operator=(const DB&) = delete;
 
@@ -63,6 +72,14 @@ class LEVELDB_EXPORT DB {
   // Set the database entry for "key" to "value".  Returns OK on success,
   // and a non-OK status on error.
   // Note: consider setting options.sync = true.
+
+  /**
+   * 将key和value存储到db里面；
+   * @param options ： 写参数设置，默认可以空对象
+   * @param key
+   * @param value
+   * @return
+   */
   virtual Status Put(const WriteOptions& options, const Slice& key,
                      const Slice& value) = 0;
 
@@ -75,6 +92,13 @@ class LEVELDB_EXPORT DB {
   // Apply the specified updates to the database.
   // Returns OK on success, non-OK on failure.
   // Note: consider setting options.sync = true.
+
+  /**
+   * 批量写的接口;
+   * @param options: 同Put接口
+   * @param updates : 批量参数，里面可以包含有写、delete的操作;
+   * @return
+   */
   virtual Status Write(const WriteOptions& options, WriteBatch* updates) = 0;
 
   // If the database contains an entry for "key" store the
@@ -93,12 +117,23 @@ class LEVELDB_EXPORT DB {
   //
   // Caller should delete the iterator when it is no longer needed.
   // The returned iterator should be deleted before this db is deleted.
+
+  /**
+   * 返回一个iterator，这个需要调用者自己去清理掉的,
+   * 返回的iterator通常是无效的，需要在调用seek之后才有效
+   * @param options
+   * @return
+   */
   virtual Iterator* NewIterator(const ReadOptions& options) = 0;
 
   // Return a handle to the current DB state.  Iterators created with
   // this handle will all observe a stable snapshot of the current DB
   // state.  The caller must call ReleaseSnapshot(result) when the
   // snapshot is no longer needed.
+  /**
+   * 获得快照; 需要调用者负责清理;
+   * @return
+   */
   virtual const Snapshot* GetSnapshot() = 0;
 
   // Release a previously acquired snapshot.  The caller must not
@@ -121,6 +156,13 @@ class LEVELDB_EXPORT DB {
   //     of the sstables that make up the db contents.
   //  "leveldb.approximate-memory-usage" - returns the approximate number of
   //     bytes of memory in use by the DB.
+
+  /**
+   * leveldb会有自己的统计信息，这个函数可以获得这些信息;
+   * @param property
+   * @param value
+   * @return
+   */
   virtual bool GetProperty(const Slice& property, std::string* value) = 0;
 
   // For each i in [0,n-1], store in "sizes[i]", the approximate
@@ -131,6 +173,13 @@ class LEVELDB_EXPORT DB {
   // sizes will be one-tenth the size of the corresponding user data size.
   //
   // The results may not include the sizes of recently written data.
+
+  /**
+   * 给key的范围、给level的层数，获得这些key大概的磁盘占用空间
+   * @param range
+   * @param n
+   * @param sizes
+   */
   virtual void GetApproximateSizes(const Range* range, int n,
                                    uint64_t* sizes) = 0;
 
@@ -144,6 +193,12 @@ class LEVELDB_EXPORT DB {
   // end==nullptr is treated as a key after all keys in the database.
   // Therefore the following call will compact the entire database:
   //    db->CompactRange(nullptr, nullptr);
+
+  /**
+   * 手动触发指定key范围的compaction
+   * @param begin
+   * @param end
+   */
   virtual void CompactRange(const Slice* begin, const Slice* end) = 0;
 };
 
@@ -152,6 +207,15 @@ class LEVELDB_EXPORT DB {
 //
 // Note: For backwards compatibility, if DestroyDB is unable to list the
 // database files, Status::OK() will still be returned masking this failure.
+
+/**
+ * 完全销毁leveldb的数据
+ *
+ * 注意: 为了向后兼容；假如destroyDB不能list的db的文件，那么即使范围ok也是失败的
+ * @param name
+ * @param options
+ * @return
+ */
 LEVELDB_EXPORT Status DestroyDB(const std::string& name,
                                 const Options& options);
 

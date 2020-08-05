@@ -26,6 +26,9 @@ class Version;
 class VersionEdit;
 class VersionSet;
 
+/**
+ * db的实现类
+ */
 class DBImpl : public DB {
  public:
   DBImpl(const Options& options, const std::string& dbname);
@@ -156,15 +159,22 @@ class DBImpl : public DB {
   }
 
   // Constant after construction
+
+  //指定环境的工具类，比如文件操作之类的
   Env* const env_;
   const InternalKeyComparator internal_comparator_;
   const InternalFilterPolicy internal_filter_policy_;
   const Options options_;  // options_.comparator == &internal_comparator_
+
+  //是否是自己管理infolog和blockcache,通常都是leveldb自己去管理，而非调用者来传入
   const bool owns_info_log_;
   const bool owns_cache_;
   const std::string dbname_;
 
   // table_cache_ provides its own synchronization
+  /**
+   * 提供对于leveldb的文件信息的管理，所以它的大小为最大打开文件个数
+   */
   TableCache* const table_cache_;
 
   // Lock over the persistent DB state.  Non-null iff successfully acquired.
@@ -174,16 +184,26 @@ class DBImpl : public DB {
   port::Mutex mutex_;
   std::atomic<bool> shutting_down_;
   port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
+
   MemTable* mem_;
   MemTable* imm_ GUARDED_BY(mutex_);  // Memtable being compacted
   std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_
+
+  //WAL的文件，logFiles用在后面的log_上面
   WritableFile* logfile_;
   uint64_t logfile_number_ GUARDED_BY(mutex_);
+
+  /**
+   * 感觉是WAL的类,用来存储put的数据
+   */
   log::Writer* log_;
   uint32_t seed_ GUARDED_BY(mutex_);  // For sampling.
 
   // Queue of writers.
   std::deque<Writer*> writers_ GUARDED_BY(mutex_);
+  /**
+   *  leveldb是结合多个写入然后才操作memtable + wal；而这个对象就是WriteBatch
+   */
   WriteBatch* tmp_batch_ GUARDED_BY(mutex_);
 
   SnapshotList snapshots_ GUARDED_BY(mutex_);

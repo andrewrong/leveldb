@@ -2128,6 +2128,7 @@ static bool CompareIterators(int step, DB* model, DB* db,
   Iterator* miter = model->NewIterator(options);
   options.snapshot = db_snap;
   Iterator* dbiter = db->NewIterator(options);
+
   bool ok = true;
   int count = 0;
   for (miter->SeekToFirst(), dbiter->SeekToFirst();

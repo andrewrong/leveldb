@@ -26,6 +26,7 @@ class Reader {
 
     // Some corruption was detected.  "size" is the approximate number
     // of bytes dropped due to the corruption.
+    // 在遍历数据的时候如果出现数据损坏而丢失的记录
     virtual void Corruption(size_t bytes, const Status& status) = 0;
   };
 

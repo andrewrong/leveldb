@@ -41,8 +41,13 @@ Status Writer::AddRecord(const Slice& slice) {
   Status s;
   bool begin = true;
   do {
+    //leftover:表示当前正在操作的block，下一次继续写入的位置
     const int leftover = kBlockSize - block_offset_;
     assert(leftover >= 0);
+
+    /**
+     * 假如上一个未写满的block的offset小于头的大小，就直接用0进行贴补上就可以了
+     */
     if (leftover < kHeaderSize) {
       // Switch to a new block
       if (leftover > 0) {
@@ -56,11 +61,18 @@ Status Writer::AddRecord(const Slice& slice) {
     // Invariant: we never leave < kHeaderSize bytes in a block.
     assert(kBlockSize - block_offset_ - kHeaderSize >= 0);
 
+    /**
+     * 当前block放不下就有多少放多少，如果都能放下，就全部放下
+     */
     const size_t avail = kBlockSize - block_offset_ - kHeaderSize;
     const size_t fragment_length = (left < avail) ? left : avail;
 
     RecordType type;
     const bool end = (left == fragment_length);
+
+    /**
+     * 数据段在存放到wal的时候，可能会涉及到多个block，所以必须知道当前block后面是否还有其他的block需要读取，我们是一体的
+     */
     if (begin && end) {
       type = kFullType;
     } else if (begin) {

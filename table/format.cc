@@ -70,6 +70,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
   // Read the block contents as well as the type/crc footer.
   // See table_builder.cc for the code that built this structure.
   size_t n = static_cast<size_t>(handle.size());
+  // 获得整个块的长度，目前的大小为block本身的长度 + 1byte type + 4 crc
   char* buf = new char[n + kBlockTrailerSize];
   Slice contents;
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
@@ -77,6 +78,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
     delete[] buf;
     return s;
   }
+  //读取的block如果size不一样的话，可能这个被破坏了，就扔掉
   if (contents.size() != n + kBlockTrailerSize) {
     delete[] buf;
     return Status::Corruption("truncated block read");
@@ -93,7 +95,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
       return s;
     }
   }
-
+  //一个字节的type指的数据是否进行了压缩
   switch (data[n]) {
     case kNoCompression:
       if (data != buf) {

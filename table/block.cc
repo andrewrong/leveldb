@@ -24,6 +24,7 @@ inline uint32_t Block::NumRestarts() const {
 
 Block::Block(const BlockContents& contents)
     : data_(contents.data.data()),
+      //size_真实数据长度
       size_(contents.data.size()),
       owned_(contents.heap_allocated) {
   if (size_ < sizeof(uint32_t)) {
